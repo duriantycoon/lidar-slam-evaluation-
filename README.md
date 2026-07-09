@@ -66,11 +66,6 @@ ros2 topic list -t
 ros2 topic hz /global_voxel_map
 ```
 
-**Terminal 3: plays the bag file (the recorded sensor data)**
-```bash
-ros2 bag play $HOME/lidar_bags/lidar_bag --clock
-```
-
 ## What topics showed up
 Once everything was running, these were the important ones:
 - `/deskewed_points`, the cleaned up point cloud
