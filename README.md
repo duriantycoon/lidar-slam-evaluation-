@@ -1,177 +1,161 @@
-# LiDAR SLAM System Integration Project
+# LiDAR SLAM Project - KISS-SLAM
 
-## Selected System
-KISS-SLAM (Option A)
+## What system did I use?
+KISS-SLAM. It's a LiDAR SLAM system made by the University of Bonn.
 
-## Repository
-- Official repository: https://github.com/PRBonn/kiss-slam
-- ROS 2 wrapper (third-party, experimental): https://github.com/abwerby/kiss-slam-ros2
+- Main code: https://github.com/PRBonn/kiss-slam
+- ROS 2 version I actually ran: https://github.com/abwerby/kiss-slam-ros2 (this is a
+  wrapper someone else built, not the official one, so it's a bit rough. More on
+  that in the Problems section below.)
 
-## System Summary
-KISS-SLAM is a LiDAR-only SLAM system built on top of KISS-ICP odometry. It adds:
-- local map construction (voxel-based),
-- loop closure detection via local-map overlap,
-- pose graph optimization to correct drift once a closure is accepted.
+## What does it actually do?
+Normal LiDAR odometry just compares one scan to the next and guesses how far the
+sensor moved. KISS-SLAM does that too, but it also:
+- builds and keeps an actual map while it runs,
+- notices when it comes back to a place it already saw (this is called a "loop
+  closure"),
+- and fixes the map/path when that happens, instead of letting small errors pile up
+  forever.
 
-Unlike pure LiDAR odometry, KISS-SLAM maintains a global map and corrects accumulated
-drift whenever it revisits a previously mapped area (loop closure), rather than only
-integrating relative motion between scans.
+So it's a step up from plain odometry. It can catch and fix its own mistakes.
 
-## Input Data
-- **Bag used:** `$HOME/lidar_bags/lidar_bag`
-- **LiDAR topic:** `/livox/lidar` (`sensor_msgs/msg/PointCloud2`)
-- **IMU topic:** `/livox/imu` (`sensor_msgs/msg/Imu`) — available in the bag; KISS-SLAM
-  as configured here runs LiDAR-only (see System section below)
-- **Topic remapping:** none required — the wrapper's `topic:=` launch argument was set
-  directly to `/livox/lidar`, overriding its default (`/ouster/points`)
+## What data did I use?
+- Bag file: `lidar_bags/lidar_bag`
+- LiDAR topic: `/livox/lidar`
+- IMU topic in the bag: `/livox/imu` (I did not end up needing this one. This run
+  only uses LiDAR data. No topics needed to be renamed.)
 
-## Installation
+## How I installed it
 ```bash
 sudo apt update
 sudo apt install -y git python3-pip python3-colcon-common-extensions \
   libeigen3-dev libsuitesparse-dev
 
-# Ubuntu 23.04+/newer 22.04 block system-wide pip (PEP 668).
-# Installed into system Python so the ROS2 node (system Python subprocess)
-# can import kiss_slam at runtime:
 pip install --break-system-packages kiss-slam
-
-# sanity check
-kiss_slam_pipeline --help
 ```
+(The `--break-system-packages` part is there because newer Ubuntu blocks normal
+`pip install` by default. More on why I needed this in the Problems section.)
 
-## Build Instructions
+## How I built the ROS 2 wrapper
 ```bash
 mkdir -p ~/slam_ws/src
 cd ~/slam_ws/src
 git clone https://github.com/abwerby/kiss-slam-ros2.git
 
-cd ~/slam_ws        # IMPORTANT: build from the workspace root, not inside the package
+cd ~/slam_ws
 colcon build --symlink-install
 source ~/slam_ws/install/setup.bash
 ```
 
-## Running on the Provided Bag
-Three terminals were used.
+## How I ran it
+I used 3 terminal windows at the same time.
 
-**Terminal 1 — launch the SLAM node + RViz:**
+**Terminal 1: starts the SLAM node and opens RViz**
 ```bash
 cd ~/slam_ws
 source install/setup.bash
 ros2 launch kiss_slam_ros slam.launch.py \
   topic:=/livox/lidar \
-  bagfile:=$HOME/lidar_bags/lidar_bag \
   visualize:=true \
   use_sim_time:=true
 ```
 
-**Terminal 2 — verify topics are live:**
+**Terminal 2: used to check that things were working**
 ```bash
 ros2 topic list -t
 ros2 topic hz /global_voxel_map
 ```
 
-**Terminal 3 — play the bag:**
+**Terminal 3: plays the bag file (the recorded sensor data)**
 ```bash
 ros2 bag play $HOME/lidar_bags/lidar_bag --clock
 ```
 
-## Topic and Frame Configuration
-- **Input:** `/livox/lidar` → passed via `topic:=/livox/lidar`
-- **Fixed frame (RViz):** `odom`
-- **Published outputs observed via `ros2 topic list -t`:**
-  - `/deskewed_points` (`sensor_msgs/msg/PointCloud2`)
-  - `/global_path` (`nav_msgs/msg/Path`)
-  - `/global_pose` (`geometry_msgs/msg/PoseStamped`)
-  - `/global_voxel_map` (`sensor_msgs/msg/PointCloud2`)
-  - `/odometry` (`nav_msgs/msg/Odometry`)
-  - `/tf`, `/tf_static`
-- No manual topic remapping was needed beyond the `topic:=` launch argument.
+## What topics showed up
+Once everything was running, these were the important ones:
+- `/deskewed_points`, the cleaned up point cloud
+- `/global_path`, the trajectory (the path the sensor took)
+- `/global_voxel_map`, the map being built
+- `/odometry`, the position and motion estimate
+- `/tf`, the frame tree that connects everything together
 
-## Parameter or Config Changes
-| Parameter | Original value | New value | Reason |
+In RViz I set the Fixed Frame to `odom`. I also had to manually add the map, path,
+and points displays myself, since RViz does not show anything by default except the
+TF axes.
+
+## What I changed and why
+| Setting | Default | What I set it to | Why |
 |---|---|---|---|
-| `topic` (launch arg) | `/ouster/points` | `/livox/lidar` | Wrapper defaults to an Ouster topic name; had to point it at the Livox bag's actual topic |
-| `use_sim_time` | `false` (implied) | `true` | Required so the node uses bag-clock time (`/clock`) instead of wall-clock time while replaying a bag |
+| `topic` | `/ouster/points` | `/livox/lidar` | The wrapper assumes a different LiDAR brand by default, so I had to point it at the real topic in the Livox bag |
+| `use_sim_time` | off | `true` | So the node uses the bag's recorded timestamps instead of my computer's real clock |
 
-## Results
-- `ros2 topic hz /global_voxel_map` confirmed the map topic publishing at roughly
-  0.7–0.8 Hz during the run (expected — map updates are less frequent than raw scans).
-- RViz screenshots show a growing voxel map (white grid mesh) and accumulated
-  `deskewed_points` (red) forming a recognizable structure/corridor shape, with the
-  `Path`/`Odometry` trajectory tracking the sensor's motion.
-- See `images/rviz_early.png` (early in the run, small map) and
-  `images/rviz_result.png` (further into the run, larger accumulated point cloud/map).
+## Did it work?
+Yes. Here is what I saw:
 
-## Evaluation
-- **Did the system run successfully?** Yes — the node started, subscribed to
-  `/livox/lidar`, and published odometry, TF, path, and map topics.
-- **Trajectory/map quality:** The accumulated point cloud in `rviz_result.png` shows a
-  consistent, non-fragmented structure, suggesting odometry was reasonably accurate
-  over the observed segment.
-- **Loop closure:** In an earlier full run (see Problems section), the terminal log
-  showed multiple `Closure Detected` events with local-map overlap scores ranging from
-  ~0.39 to ~0.90; one closure (overlap 0.39) was correctly rejected for low overlap
-  while the rest were accepted and triggered `Optimize Pose Graph`. This confirms the
-  loop-closure and pose-graph-correction pipeline is functioning as intended.
-- **Drift/jumps:** No sudden trajectory jumps were observed in RViz during the
-  captured segment; the map appeared spatially consistent rather than duplicated
-  or offset.
+- The map (a white grid) and the point cloud (red dots) built up over time in RViz.
+  Screenshots are below.
+- `ros2 topic hz /global_voxel_map` showed the map topic updating steadily, about
+  once every 1 to 1.3 seconds. That makes sense since the map does not need to
+  update as often as raw scans do.
+- On an earlier full run, the terminal log showed several loop closures. Most were
+  accepted, with overlap scores between about 0.5 and 0.9. One was correctly turned
+  down for being too low (0.39). So the system is not just accepting every closure,
+  it is actually checking quality first.
+- I did not see any sudden jumps, and the map did not look broken or doubled up. It
+  looked steady and consistent.
 
-## Problems and Troubleshooting
-1. **`externally-managed-environment` pip error** — Ubuntu blocks system-wide `pip
-   install`. Solved with `pip install --break-system-packages kiss-slam`.
-2. **`ModuleNotFoundError` for `kiss_icp` inside the SLAM node** — occurred when
-   `kiss-slam` was installed only inside a Python venv. ROS2 launches nodes using the
-   system Python interpreter, not the venv, so the package was invisible to the node.
-   Solved by installing `kiss-slam` into system Python instead of a venv.
-3. **`colcon build` produced `install/` in the wrong location** — build was
-   initially run from inside the package folder (`~/slam_ws/src/kiss-slam-ros2`)
-   instead of the workspace root (`~/slam_ws`), so `source ~/slam_ws/install/setup.bash`
-   failed with "no such file." Solved by removing the stray `build/`, `install/`,
-   `log/` folders from inside the package directory and re-running `colcon build`
-   from `~/slam_ws`.
-4. **`/livox/lidar` showed no data initially** — root cause was simply that the bag
-   player had not been started yet in a separate terminal; confirmed with
-   `ros2 bag info` and `ros2 topic hz /livox/lidar`.
-5. **RViz showed only a TF axis marker, nothing else** — a fresh RViz session does
-   not auto-add displays. Fixed by manually adding `PointCloud2` displays for
-   `/deskewed_points` and `/global_voxel_map`, and a `Path`/`Odometry` display for
-   `/global_path` and `/odometry`, and setting Fixed Frame to `odom`.
-6. **QoS incompatibility silently blocked RViz from receiving the map** — terminal
-   showed:
-   ```
-   [slam_node]: New subscription discovered on topic 'global_voxel_map', requesting
-   incompatible QoS. No messages will be sent to it. Last incompatible policy: RELIABILITY
-   ```
-   The node publishes `/global_voxel_map` and `/global_pose` with **Best Effort**
-   reliability, while RViz's display subscriber defaulted to **Reliable**. Because
-   these are incompatible, zero messages were delivered — no error, no crash, just
-   silence. Fixed by opening the display's **Topic** settings in RViz and manually
-   setting **Reliability Policy** to **Best Effort** to match the publisher. This is a
-   wrapper-side design choice worth noting for anyone reproducing this project.
-7. **`TF_OLD_DATA` warnings when looping the bag** — using `ros2 bag play --loop`
-   causes timestamps to jump backward when the bag restarts, which TF interprets as
-   data from the past and discards. This is expected behavior with looped playback,
-   not a system failure; documented here rather than treated as a bug. For clean
-   single-pass evidence, the bag was played once (no `--loop`) for final screenshots.
-8. **Bare `kiss_icp_pipeline` (non-ROS) produced no output** — this is not part of
-   the required workflow. The standalone pipeline expects raw point-cloud formats
-   (e.g. KITTI-style/PCD), not `.db3` ROS bags, so it exited almost immediately with
-   nothing processed. Not used further; all results in this report come from the
-   ROS2 wrapper (`slam.launch.py`), which is the correct/required path for this bag
-   format.
+![Early in the run](images/rviz_early.png)
+![Later in the run, map has grown](images/rviz_result.png)
 
-## What I Learned
-- The practical difference between LiDAR odometry (frame-to-frame motion estimate)
-  and full SLAM: KISS-SLAM builds and maintains a persistent map, detects when the
-  sensor revisits a previously seen area, and retroactively corrects the whole
-  trajectory/map via pose graph optimization — something pure odometry cannot do.
-- How to diagnose a "silent" ROS2 pipeline failure (no data reaching RViz) by
-  checking, in order: is the bag playing → is the input topic correct → is the node
-  alive and subscribed → is the node publishing → is a QoS mismatch silently
-  dropping messages between a live publisher and subscriber.
-- The importance of running `colcon build` from the workspace root, and of
-  installing Python dependencies into whichever interpreter ROS2 actually launches
-  nodes with (system Python, not an isolated venv), when a ROS2 node imports a
-  pip-installed library at runtime.
+## Problems I ran into (and how I fixed them)
+1. **`pip install` refused to run.** Newer Ubuntu blocks installing Python packages
+   system-wide by default. Fixed it with `pip install --break-system-packages
+   kiss-slam`.
+
+2. **The SLAM node could not find the `kiss_icp` module**, even though I had it
+   installed. It turned out I had installed it inside a virtual environment, but
+   ROS 2 runs nodes using the normal system Python, not my virtual environment.
+   Fixed it by installing the package into system Python instead (same command as
+   above).
+
+3. **`colcon build` created an `install/` folder in the wrong spot.** I had run the
+   build command from inside the package folder instead of the main workspace
+   folder. I deleted the extra `build`, `install`, and `log` folders and rebuilt
+   from the correct spot (`~/slam_ws`).
+
+4. **`/livox/lidar` was not publishing any data at first.** It turned out I just had
+   not started playing the bag yet in another terminal. Once I did, data started
+   showing up.
+
+5. **RViz was empty except for a small axis marker.** RViz does not add anything on
+   its own. You have to click "Add" and pick the topics you want to see (map, path,
+   points).
+
+6. **RViz still showed nothing even after I added the displays**, and the terminal
+   printed a warning about "incompatible QoS." Basically, the SLAM node was sending
+   data one way ("Best Effort"), and RViz was trying to listen a different way
+   ("Reliable"). They just were not matching up, and no error showed why. I fixed it
+   by opening each display's settings in RViz and changing its Reliability setting
+   to "Best Effort" to match the node.
+
+7. **Strange timestamp warnings showed up when I looped the bag on repeat.** When a
+   looped bag restarts, its timestamps jump backward, and ROS treats that as old
+   data and prints warnings. This is not really a bug, just a side effect of
+   looping. For my final screenshots, I played the bag once through instead of
+   looping it.
+
+8. **I tried running the plain `kiss_icp_pipeline` by itself (without ROS)** and got
+   nothing. It expects a different file format, not a ROS bag, so it just closes
+   right away. I did not need this anyway. The ROS 2 launch file is the correct way
+   to run this on the provided bags.
+
+## What I learned
+- The real difference between odometry and SLAM: odometry just estimates motion one
+  step at a time, and small errors add up over time. SLAM (like this system) keeps
+  an actual map and can go back and fix earlier mistakes once it recognizes a place
+  it has already visited.
+- When something in ROS 2 looks broken but there is no clear error, it is often a
+  quiet mismatch somewhere (wrong topic name, wrong Python environment, or QoS
+  settings not matching), not the code actually being wrong.
+- Always build ROS 2 workspaces from the top level folder, not from inside a
+  package. It saves a lot of confusion later.
