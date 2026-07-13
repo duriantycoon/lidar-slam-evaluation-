@@ -182,6 +182,10 @@ If displays remain empty after being added, and the terminal output includes a w
 
 Resolution: in each RViz display's settings, set the Reliability field to "Best Effort" to match the publisher.
 
+The resulting RViz simulation should look something like this:
+<img width="1092" height="515" alt="image" src="https://github.com/user-attachments/assets/cf2c431c-e1db-430c-a989-241c56df776e" />
+
+
 ## 9. Verifying Correct Operation
 
 Indicators of correct operation:
