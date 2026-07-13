@@ -44,9 +44,38 @@ ModuleNotFoundError: No module named 'kiss_icp'
 
 This occurs even if the module imports correctly within the virtual environment itself, because the ROS 2 process does not use that environment. The installation command in Section 3 should be run without an active virtual environment.
 
-A virtual environment installation is only appropriate if the standalone `kiss_slam_pipeline` command-line tool will be used without ROS 2.
+A virtual environment installation is only appropriate if the standalone `kiss_slam_pipeline` command-line tool will be used without ROS 2. Setup instructions are given in Section 4.1.
 
 ## 4. Standalone Pipeline (Optional, Non-ROS Usage)
+
+### 4.1 Virtual Environment Setup
+
+This setup applies only to non-ROS use of `kiss_slam_pipeline`. Do not use this environment when running the ROS 2 wrapper (Sections 5–8); see Section 3.1.
+
+```bash
+python3 -m venv ~/kiss_slam_venv
+source ~/kiss_slam_venv/bin/activate
+python3 -m pip install --upgrade pip
+pip install kiss-slam
+```
+
+The `--break-system-packages` flag is not required inside an active virtual environment, since pip installs into the environment's own isolated directory rather than the system Python installation.
+
+To confirm the installation succeeded:
+
+```bash
+kiss_slam_pipeline --help
+```
+
+To deactivate the environment when finished:
+
+```bash
+deactivate
+```
+
+The environment must be reactivated (`source ~/kiss_slam_venv/bin/activate`) in any new terminal session before running `kiss_slam_pipeline` or `kiss_slam_dump_config`.
+
+### 4.2 Running the Standalone Pipeline
 
 ```bash
 kiss_slam_pipeline --help
@@ -93,22 +122,23 @@ colcon build --symlink-install
 | `base_frame` | `base_link` | Robot base frame |
 | `odom_frame` | `odom` | Odometry frame |
 
-The default `topic` value assumes an Ouster sensor. For other sensors, this argument must be set explicitly. For example, for a Livox sensor publishing on `/livox/lidar`:
+The default `topic` value assumes an Ouster sensor. For other sensors, this argument must be set explicitly. For example, for a Livox sensor publishing on `/livox/lidar`, with automatic bag playback via the `bagfile` argument:
 
 ```bash
 ros2 launch kiss_slam_ros slam.launch.py \
   topic:=/livox/lidar \
   visualize:=true \
-  use_sim_time:=true
+  use_sim_time:=true \
+  bagfile:=$HOME/lidar_bags/lidar_bag
 ```
 
 Parameters can also be modified directly in `ros2/src/kiss_slam_ros/config/params.yaml`.
 
 ## 7. Running the System
 
-Three terminal sessions are required.
+Two terminal sessions are required.
 
-**Terminal 1: launch the SLAM node and RViz**
+**Terminal 1: launch the SLAM node, RViz, and bag playback**
 
 ```bash
 cd ~/slam_ws
@@ -116,8 +146,11 @@ source install/setup.bash
 ros2 launch kiss_slam_ros slam.launch.py \
   topic:=/livox/lidar \
   visualize:=true \
-  use_sim_time:=true
+  use_sim_time:=true \
+  bagfile:=$HOME/lidar_bags/lidar_bag
 ```
+
+The `bagfile` argument causes the launch file to start bag playback automatically, so a separate `ros2 bag play` command is not required.
 
 **Terminal 2: verification commands**
 
@@ -125,14 +158,6 @@ ros2 launch kiss_slam_ros slam.launch.py \
 ros2 topic list -t
 ros2 topic hz /global_voxel_map
 ```
-
-**Terminal 3: play the bag file**
-
-```bash
-ros2 bag play lidar_bags/lidar_bag
-```
-
-This is the standard ROS 2 command for bag playback, using the bag path referenced in Section 1. If no data appears on the input topic, confirm that the bag has been started in this terminal.
 
 ### 7.1 Relevant Topics
 
@@ -173,7 +198,7 @@ Indicators of correct operation:
 | `pip install kiss-slam` fails | System-wide pip installation blocked by default on recent Ubuntu | Use `pip install --break-system-packages kiss-slam` |
 | `ModuleNotFoundError: kiss_icp` when launching the node | Package installed in a virtual environment; ROS 2 uses the system Python interpreter | Install into system Python using the command above, without an active virtual environment |
 | `install/` directory created in an unexpected location | `colcon build` run from within the package directory instead of the workspace root | Remove `build`, `install`, `log` directories and rebuild from the workspace root |
-| No data on the input LiDAR topic | Bag playback not yet started | Start `ros2 bag play <bagfile>` in a separate terminal |
+| No data on the input LiDAR topic | Bag not playing, or `bagfile` argument omitted from the launch command | Pass `bagfile:=<path>` to `ros2 launch`, or start `ros2 bag play <bagfile>` manually in a separate terminal |
 | RViz displays no data | No displays are added by default | Manually add displays for map, path, and point cloud topics |
 | RViz still shows no data; QoS warning in terminal | Reliability policy mismatch between publisher (Best Effort) and subscriber (Reliable) | Set RViz display Reliability to Best Effort |
 | Timestamp warnings during looped bag playback | Timestamps decrease when a looped bag restarts, which ROS interprets as delayed data | Play the bag through once rather than looping, particularly when capturing results |
