@@ -183,7 +183,12 @@ If displays remain empty after being added, and the terminal output includes a w
 Resolution: in each RViz display's settings, set the Reliability field to "Best Effort" to match the publisher.
 
 The resulting RViz simulation should look something like this:
+
+
 <img width="1092" height="515" alt="image" src="https://github.com/user-attachments/assets/cf2c431c-e1db-430c-a989-241c56df776e" />
+
+
+The color and size of the displayed points can be adjusted in each display's settings panel. Under the PointCloud2 display for `/deskewed_points` (or `/global_voxel_map`), the **Color Transformer** field controls how points are colored (for example, a fixed color, or a value mapped from intensity, height, or another field), and the **Size (m)** field controls the rendered point size. These settings affect only the visualization in RViz and do not change the underlying data.
 
 
 ## 9. Verifying Correct Operation
