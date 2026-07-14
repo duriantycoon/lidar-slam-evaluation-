@@ -111,6 +111,37 @@ cd ~/slam_ws
 colcon build --symlink-install
 ```
 
+### 5.1 Package Not Found After Build
+
+If `ros2 launch kiss_slam_ros slam.launch.py` (or `ros2 pkg list | grep kiss_slam_ros`) 
+reports the package as not found even after a successful `colcon build`, the workspace 
+overlay was likely not sourced in the terminal being used to launch.
+
+Sourcing `~/slam_ws/install/setup.bash` only affects the terminal session it is run in. 
+A new terminal, or a terminal that only has the base ROS 2 install sourced 
+(`/opt/ros/<distro>/setup.bash`), will not see the package until the workspace overlay 
+is sourced explicitly:
+
+​```bash
+source /opt/ros/<distro>/setup.bash
+source ~/slam_ws/install/setup.bash
+​```
+
+Confirm the package is visible before launching:
+
+​```bash
+ros2 pkg list | grep kiss_slam_ros
+​```
+
+If it still does not appear, confirm the build actually produced it:
+
+​```bash
+ls ~/slam_ws/install | grep kiss_slam_ros
+​```
+
+If missing there too, the build did not complete for this package — rerun 
+`colcon build --symlink-install` from the workspace root and check the build output for errors.
+
 ## 6. Launch Arguments
 
 | Argument | Default | Description |
