@@ -122,6 +122,16 @@ A new terminal, or a terminal that only has the base ROS 2 install sourced
 (`/opt/ros/<distro>/setup.bash`), will not see the package until the workspace overlay 
 is sourced explicitly:
 
+If `No such file in directory`
+
+```bash
+mv ~/slam_ws/src/kiss-slam-ros2/ros2 ~/slam_ws/src/kiss_slam_ros
+rm -rf ~/slam_ws/build ~/slam_ws/install ~/slam_ws/log
+cd ~/slam_ws
+colcon build --symlink-install
+source install/setup.bash
+```
+
 ​```bash
 source /opt/ros/<distro>/setup.bash
 source ~/slam_ws/install/setup.bash
